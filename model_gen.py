@@ -5,26 +5,34 @@ from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 from datasets import load_dataset
 
-MODEL_PATH = 'content_inspector.pkl'
+MODEL_PATH = 'content_inspector_combo.pkl'
 
-def get_dataset(n_samples=2500):
-    ds = load_dataset("Hello-SimpleAI/HC3", "all", split="train")
-    rows = [row for row in ds if row['human_answers'] and row['chatgpt_answers']]
-    humans, ais = [], []
-    for row in rows:
-        if len(humans) < n_samples//2 and row['human_answers']:
+def get_dataset(n_samples=2000):
+    ds_hc3 = load_dataset("Hello-SimpleAI/HC3", "all", split="train")
+    ds_ai_vs_human = load_dataset("zcamz/ai-vs-human-HuggingFaceTB-SmolLM2-360M-Instruct", split="train")
+    samples = []
+    for row in ds_hc3:
+        if row['human_answers'] and len(samples) < n_samples:
             txt = row['human_answers'][0].strip()
             if len(txt) > 40:
-                humans.append({'text': txt, 'label': 0})
-        if len(ais) < n_samples//2 and row['chatgpt_answers']:
+                samples.append({'text': txt, 'label': 0})
+        if row['chatgpt_answers'] and len(samples) < 2*n_samples:
             txt = row['chatgpt_answers'][0].strip()
             if len(txt) > 40:
-                ais.append({'text': txt, 'label': 1})
-        if len(humans) >= n_samples//2 and len(ais) >= n_samples//2:
+                samples.append({'text': txt, 'label': 1})
+        if len(samples) >= 2*n_samples:
             break
-    all_samples = humans + ais
-    X = [item['text'] for item in all_samples]
-    y = [item['label'] for item in all_samples]
+    for row in ds_ai_vs_human:
+        txt_ai = row['ai'].strip()
+        txt_human = row['human'].strip()
+        if len(txt_ai) > 40:
+            samples.append({'text': txt_ai, 'label': 1})
+        if len(txt_human) > 40:
+            samples.append({'text': txt_human, 'label': 0})
+        if len(samples) >= 4*n_samples:
+            break
+    X = [item['text'] for item in samples[:2*n_samples]]
+    y = [item['label'] for item in samples[:2*n_samples]]
     return X, y
 
 def create_pipeline():
@@ -36,7 +44,7 @@ def create_pipeline():
     return pipe
 
 def train():
-    X, y = get_dataset(n_samples=2500)
+    X, y = get_dataset(n_samples=2000)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     pipe = create_pipeline()
     pipe.fit(X_train, y_train)
